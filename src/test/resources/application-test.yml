@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: ${LEDGER_TEST_DB_URL:jdbc:postgresql://localhost:5432/ledger_test}
+    username: ${LEDGER_TEST_DB_USER:ledger}
+    password: ${LEDGER_TEST_DB_PASSWORD:ledger}
+
+ledger:
+  admin-token: test-admin-token
+  projection:
+    # tests drive the projector by hand
+    enabled: false
