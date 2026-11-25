@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 import io.ledgerline.account.Account;
@@ -21,6 +22,7 @@ import io.ledgerline.tenant.TenantService;
 /** Runs against a real PostgreSQL database, see README for setup. */
 @SpringBootTest
 @ActiveProfiles("test")
+@Import(TestClockConfig.class)
 public abstract class IntegrationTestBase {
 
     @Autowired
@@ -33,9 +35,12 @@ public abstract class IntegrationTestBase {
     protected PostingService postingService;
     @Autowired
     protected BalanceProjector projector;
+    @Autowired
+    protected TestClock clock;
 
     @BeforeEach
     void cleanDatabase() {
+        clock.reset();
         jdbc.execute("""
                 truncate table holds, fx_conversions, fx_clearing_accounts, fx_rates, idempotency_keys, projection_tenant_checkpoints, account_balances, ledger_events, tenant_event_sequences,
                     journal_lines, journal_entries, accounts, tenants restart identity cascade

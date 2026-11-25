@@ -24,6 +24,11 @@ Built with Java 21, Spring Boot 3.4, Spring Data JPA, Flyway and PostgreSQL.
   (or the inverse of the opposite pair), rounding half-even to the target's
   minor unit. It posts four lines, so both currencies balance, and records
   the rate used in `fx_conversions`.
+- **Holds** reserve part of an account's balance for up to 30 days. The
+  balance endpoint reports `heldMinor` and `availableMinor`. A hold is
+  captured into a journal entry (a partial capture releases the rest),
+  released, or expires; it stops counting at its expiry time even before the
+  expiry job records it. Only one of capture, release and expiry can win.
 - **Event log** (`ledger_events`). Posting an entry or opening/closing an
   account appends an event in the same transaction. Each tenant's events are
   numbered 1, 2, 3, ... (`tenant_sequence`), and `GET /api/events` lets an
@@ -40,6 +45,7 @@ src/main/java/io/ledgerline
   journal/     posting, reversals, entry and statement queries
   event/       event log, event feed API
   fx/          FX rates, clearing accounts, conversions
+  hold/        holds, capture, release, expiry job
   idempotency/ Idempotency-Key handling
   projection/  balance projector, balances, trial balance report
   tenant/      tenants, API keys, admin API
@@ -94,7 +100,8 @@ violations are `422` with a `code` field such as `unbalanced` or
 `currency_mismatch`.
 
 `POST /api/accounts`, `POST /api/entries`, `POST /api/entries/{id}/reversal`
-and `POST /api/fx/conversions` accept an optional `Idempotency-Key` header. A retry with the same key and body
+`POST /api/fx/conversions`, `POST /api/holds` and `POST /api/holds/{id}/capture`
+accept an optional `Idempotency-Key` header. A retry with the same key and body
 gets the first response back, marked `Idempotent-Replayed: true`, and nothing
 is written twice, even when the two requests arrive at the same time. The same
 key with a different body is a `409`. Failed requests are not stored, so they
@@ -121,6 +128,11 @@ can be retried with the same key. Keys are kept for `ledger.idempotency.ttl`
 | PUT | `/api/fx/clearing-accounts/{currency}` | set the clearing account for a currency |
 | GET | `/api/fx/clearing-accounts` | list clearing accounts |
 | POST | `/api/fx/conversions` | convert between two accounts in different currencies |
+| POST | `/api/holds` | place a hold |
+| GET | `/api/holds?accountId=&status=` | list an account's holds |
+| GET | `/api/holds/{id}` | get a hold |
+| POST | `/api/holds/{id}/capture` | capture all or part of a hold |
+| POST | `/api/holds/{id}/release` | release a hold |
 | GET | `/api/reports/trial-balance?currency=` | trial balance for one currency |
 | GET | `/api/events?afterSequence=&limit=` | the tenant's event feed |
 
