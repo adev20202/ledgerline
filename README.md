@@ -12,10 +12,18 @@ Built with Java 21, Spring Boot 3.4, Spring Data JPA, Flyway and PostgreSQL.
 - **Accounts** have a type (asset, liability, equity, income, expense), a
   currency and a code that is unique per tenant. Only accounts with a zero
   balance can be closed.
-- **Journal entries** are single-currency and must balance: total debits equal
-  total credits, with at least two lines. Amounts are integers in the
+- **Journal entries** must balance in every currency they touch: per
+  currency, total debits equal total credits, with at least two lines in all.
+  Each line is in its account's currency. An entry sent with a `currency`
+  must stay in that one currency. Amounts are integers in the
   currency's minor unit (cents for USD). Entries are never edited or deleted;
   a mistake is fixed by posting a reversal.
+- **FX.** Each tenant stores dated rates (`1 base = rate quote`) and one FX
+  clearing account per currency. A conversion moves an amount from an account
+  in one currency to an account in another at the rate in effect on a date
+  (or the inverse of the opposite pair), rounding half-even to the target's
+  minor unit. It posts four lines, so both currencies balance, and records
+  the rate used in `fx_conversions`.
 - **Event log** (`ledger_events`). Posting an entry or opening/closing an
   account appends an event in the same transaction. Each tenant's events are
   numbered 1, 2, 3, ... (`tenant_sequence`), and `GET /api/events` lets an
@@ -31,6 +39,8 @@ src/main/java/io/ledgerline
   account/     accounts, account API
   journal/     posting, reversals, entry and statement queries
   event/       event log, event feed API
+  fx/          FX rates, clearing accounts, conversions
+  idempotency/ Idempotency-Key handling
   projection/  balance projector, balances, trial balance report
   tenant/      tenants, API keys, admin API
   web/         API key filter, error mapping
@@ -83,8 +93,8 @@ key in `X-Api-Key`. Errors are RFC 9457 problem details; ledger rule
 violations are `422` with a `code` field such as `unbalanced` or
 `currency_mismatch`.
 
-`POST /api/accounts`, `POST /api/entries` and `POST /api/entries/{id}/reversal`
-accept an optional `Idempotency-Key` header. A retry with the same key and body
+`POST /api/accounts`, `POST /api/entries`, `POST /api/entries/{id}/reversal`
+and `POST /api/fx/conversions` accept an optional `Idempotency-Key` header. A retry with the same key and body
 gets the first response back, marked `Idempotent-Replayed: true`, and nothing
 is written twice, even when the two requests arrive at the same time. The same
 key with a different body is a `409`. Failed requests are not stored, so they
@@ -106,6 +116,11 @@ can be retried with the same key. Keys are kept for `ledger.idempotency.ttl`
 | GET | `/api/entries?from=&to=` | list entries by effective date |
 | GET | `/api/entries/{id}` | get an entry |
 | POST | `/api/entries/{id}/reversal` | reverse an entry |
+| POST | `/api/fx/rates` | store a rate for a currency pair and date |
+| GET | `/api/fx/rates?base=&quote=&on=` | the rate in effect on a date |
+| PUT | `/api/fx/clearing-accounts/{currency}` | set the clearing account for a currency |
+| GET | `/api/fx/clearing-accounts` | list clearing accounts |
+| POST | `/api/fx/conversions` | convert between two accounts in different currencies |
 | GET | `/api/reports/trial-balance?currency=` | trial balance for one currency |
 | GET | `/api/events?afterSequence=&limit=` | the tenant's event feed |
 
