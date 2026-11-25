@@ -61,14 +61,19 @@ public class AccountService {
                 : accounts.findAllByTenantIdAndTypeOrderByCode(tenantId, type);
     }
 
-    /** Closes an account. Only accounts with a zero balance can be closed. */
+    /** Closes an account. Only accounts with a zero balance and no live holds can be closed. */
     @Transactional
     public Account close(UUID tenantId, UUID accountId) {
         Account account = get(tenantId, accountId);
         if (!account.isOpen()) {
             throw new LedgerRuleException("account_closed", "Account " + account.getCode() + " is already closed");
         }
-        long balance = balances.balanceOf(account).balanceMinor();
+        BalanceQueryService.AccountBalanceView view = balances.balanceOf(account);
+        if (view.heldMinor() != 0) {
+            throw new LedgerRuleException("account_has_holds",
+                    "Account " + account.getCode() + " has live holds and cannot be closed");
+        }
+        long balance = view.balanceMinor();
         if (balance != 0) {
             throw new LedgerRuleException("account_not_zero",
                     "Account " + account.getCode() + " has balance " + balance + " and cannot be closed");

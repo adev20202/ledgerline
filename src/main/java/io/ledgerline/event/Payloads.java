@@ -1,5 +1,6 @@
 package io.ledgerline.event;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -32,5 +33,17 @@ public final class Payloads {
     }
 
     public record EntryReversed(UUID entryId, UUID reversalEntryId, String reason) {
+    }
+
+    public record HoldPlaced(UUID holdId, UUID accountId, long amountMinor, String currency, Instant expiresAt) {
+    }
+
+    public record HoldCaptured(UUID holdId, UUID entryId, long amountMinor) {
+    }
+
+    public record HoldReleased(UUID holdId) {
+    }
+
+    public record HoldExpired(UUID holdId) {
     }
 }

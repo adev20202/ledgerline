@@ -37,7 +37,7 @@ public abstract class IntegrationTestBase {
     @BeforeEach
     void cleanDatabase() {
         jdbc.execute("""
-                truncate table fx_conversions, fx_clearing_accounts, fx_rates, idempotency_keys, projection_tenant_checkpoints, account_balances, ledger_events, tenant_event_sequences,
+                truncate table holds, fx_conversions, fx_clearing_accounts, fx_rates, idempotency_keys, projection_tenant_checkpoints, account_balances, ledger_events, tenant_event_sequences,
                     journal_lines, journal_entries, accounts, tenants restart identity cascade
                 """);
     }

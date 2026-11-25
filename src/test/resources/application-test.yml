@@ -9,3 +9,6 @@ ledger:
   projection:
     # tests drive the projector by hand
     enabled: false
+  holds:
+    # tests run expiry by hand
+    expiry-enabled: false

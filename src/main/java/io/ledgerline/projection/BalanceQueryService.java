@@ -1,5 +1,6 @@
 package io.ledgerline.projection;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,10 +17,11 @@ import io.ledgerline.account.AccountRepository;
 import io.ledgerline.account.AccountType;
 import io.ledgerline.common.Currencies;
 import io.ledgerline.common.NotFoundException;
+import io.ledgerline.hold.HoldRepository;
 
 /**
  * Reads balances from the projection. Balances trail the journal by however
- * far the projector is behind.
+ * far the projector is behind. Held amounts are read live from holds.
  */
 @Service
 @Transactional(readOnly = true)
@@ -27,14 +29,20 @@ public class BalanceQueryService {
 
     private final AccountBalanceRepository balances;
     private final AccountRepository accounts;
+    private final HoldRepository holds;
+    private final Clock clock;
 
-    public BalanceQueryService(AccountBalanceRepository balances, AccountRepository accounts) {
+    public BalanceQueryService(AccountBalanceRepository balances, AccountRepository accounts, HoldRepository holds,
+            Clock clock) {
         this.balances = balances;
         this.accounts = accounts;
+        this.holds = holds;
+        this.clock = clock;
     }
 
+    /** availableMinor is balanceMinor less the amount held by live holds. */
     public record AccountBalanceView(UUID accountId, String currency, long debitTotalMinor, long creditTotalMinor,
-            long balanceMinor, Instant updatedAt) {
+            long balanceMinor, long heldMinor, long availableMinor, Instant updatedAt) {
     }
 
     public record TrialBalanceRow(UUID accountId, String code, String name, AccountType type, long debitMinor,
@@ -55,8 +63,10 @@ public class BalanceQueryService {
         AccountBalance balance = balances.findById(account.getId()).orElse(null);
         long debits = balance == null ? 0 : balance.getDebitTotalMinor();
         long credits = balance == null ? 0 : balance.getCreditTotalMinor();
-        return new AccountBalanceView(account.getId(), account.getCurrency(), debits, credits,
-                account.getType().signedBalance(debits, credits), balance == null ? null : balance.getUpdatedAt());
+        long signed = account.getType().signedBalance(debits, credits);
+        long held = holds.sumLive(account.getId(), clock.instant());
+        return new AccountBalanceView(account.getId(), account.getCurrency(), debits, credits, signed, held,
+                Math.subtractExact(signed, held), balance == null ? null : balance.getUpdatedAt());
     }
 
     /** Net debit or credit per account; the two totals are equal when the books balance. */
