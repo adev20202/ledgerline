@@ -37,7 +37,7 @@ public class JournalEntry extends AssignedIdEntity {
     @Column(name = "effective_date", nullable = false)
     private LocalDate effectiveDate;
 
-    @Column(nullable = false)
+    /** The entry's currency, or null when its lines are in more than one. */
     private String currency;
 
     @Enumerated(EnumType.STRING)
@@ -73,8 +73,9 @@ public class JournalEntry extends AssignedIdEntity {
         this.postedAt = postedAt;
     }
 
-    void addLine(UUID accountId, Direction direction, long amountMinor, String memo) {
-        lines.add(new JournalLine(UUID.randomUUID(), this, lines.size() + 1, accountId, direction, amountMinor, memo));
+    void addLine(UUID accountId, String currency, Direction direction, long amountMinor, String memo) {
+        lines.add(new JournalLine(UUID.randomUUID(), this, lines.size() + 1, accountId, currency, direction,
+                amountMinor, memo));
     }
 
     void markReversed(UUID reversalEntryId) {

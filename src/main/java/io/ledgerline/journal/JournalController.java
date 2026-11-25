@@ -50,7 +50,7 @@ public class JournalController {
             @Size(max = 100) String reference,
             @NotBlank @Size(max = 500) String description,
             LocalDate effectiveDate,
-            @NotBlank @Size(min = 3, max = 3) String currency,
+            @Size(min = 3, max = 3) String currency,
             @NotNull @Size(min = 2, max = 200) List<@Valid LineRequest> lines) {
     }
 

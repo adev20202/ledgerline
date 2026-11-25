@@ -28,11 +28,12 @@ public class JournalQueryService {
             EntryStatus status, UUID reversalOf, UUID reversedBy, Instant postedAt, List<LineView> lines) {
     }
 
-    public record LineView(int lineNo, UUID accountId, Direction direction, long amountMinor, String memo) {
+    public record LineView(int lineNo, UUID accountId, String currency, Direction direction, long amountMinor,
+            String memo) {
     }
 
     public record StatementLineView(UUID entryId, LocalDate effectiveDate, Instant postedAt, String description,
-            Direction direction, long amountMinor, String memo) {
+            String currency, Direction direction, long amountMinor, String memo) {
     }
 
     public EntryView get(UUID tenantId, UUID entryId) {
@@ -49,7 +50,7 @@ public class JournalQueryService {
             int size) {
         return lines.statement(tenantId, accountId, from, to, PageRequest.of(page, size)).stream()
                 .map(l -> new StatementLineView(l.getEntry().getId(), l.getEntry().getEffectiveDate(),
-                        l.getEntry().getPostedAt(), l.getEntry().getDescription(), l.getDirection(),
+                        l.getEntry().getPostedAt(), l.getEntry().getDescription(), l.getCurrency(), l.getDirection(),
                         l.getAmountMinor(), l.getMemo()))
                 .toList();
     }
@@ -59,8 +60,8 @@ public class JournalQueryService {
         return new EntryView(e.getId(), e.getReference(), e.getDescription(), e.getEffectiveDate(), e.getCurrency(),
                 e.getStatus(), e.getReversalOf(), e.getReversedBy(), e.getPostedAt(),
                 e.getLines().stream()
-                        .map(l -> new LineView(l.getLineNo(), l.getAccountId(), l.getDirection(), l.getAmountMinor(),
-                                l.getMemo()))
+                        .map(l -> new LineView(l.getLineNo(), l.getAccountId(), l.getCurrency(), l.getDirection(),
+                                l.getAmountMinor(), l.getMemo()))
                         .toList());
     }
 }

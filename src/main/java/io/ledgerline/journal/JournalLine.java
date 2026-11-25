@@ -30,6 +30,9 @@ public class JournalLine {
     @Column(name = "account_id", nullable = false)
     private UUID accountId;
 
+    @Column(nullable = false)
+    private String currency;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Direction direction;
@@ -42,12 +45,13 @@ public class JournalLine {
     protected JournalLine() {
     }
 
-    JournalLine(UUID id, JournalEntry entry, int lineNo, UUID accountId, Direction direction, long amountMinor,
-            String memo) {
+    JournalLine(UUID id, JournalEntry entry, int lineNo, UUID accountId, String currency, Direction direction,
+            long amountMinor, String memo) {
         this.id = id;
         this.entry = entry;
         this.lineNo = lineNo;
         this.accountId = accountId;
+        this.currency = currency;
         this.direction = direction;
         this.amountMinor = amountMinor;
         this.memo = memo;
@@ -67,6 +71,10 @@ public class JournalLine {
 
     public UUID getAccountId() {
         return accountId;
+    }
+
+    public String getCurrency() {
+        return currency;
     }
 
     public Direction getDirection() {

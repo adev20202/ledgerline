@@ -122,7 +122,7 @@ public class BalanceProjector {
         for (Payloads.PostedLine line : posted.lines()) {
             AccountBalance balance = balances.findById(line.accountId())
                     .orElseGet(() -> balances.save(new AccountBalance(line.accountId(), event.getTenantId(),
-                            posted.currency(), event.getTenantSequence(), now)));
+                            line.currencyOr(posted.currency()), event.getTenantSequence(), now)));
             balance.apply(line.direction(), line.amountMinor(), event.getTenantSequence(), now);
         }
     }

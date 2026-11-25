@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -25,7 +26,10 @@ import io.ledgerline.event.EventStore;
 import io.ledgerline.event.LedgerEventType;
 import io.ledgerline.event.Payloads;
 
-/** The only way money moves: balanced, single-currency journal entries. */
+/**
+ * The only way money moves: journal entries that balance in every currency
+ * they touch. An entry with a currency set must stay in that currency.
+ */
 @Service
 public class PostingService {
 
@@ -42,6 +46,7 @@ public class PostingService {
         this.clock = clock;
     }
 
+    /** currency is optional; when null the lines may be in several currencies. */
     public record PostEntryCommand(String reference, String description, LocalDate effectiveDate, String currency,
             List<Line> lines) {
     }
@@ -87,34 +92,20 @@ public class PostingService {
     }
 
     private JournalEntry postValidated(UUID tenantId, PostEntryCommand command, UUID reversalOf) {
-        String currency = Currencies.require(command.currency()).getCurrencyCode();
+        String entryCurrency = command.currency() == null
+                ? null
+                : Currencies.require(command.currency()).getCurrencyCode();
         List<Line> lines = command.lines();
         if (lines == null || lines.size() < 2) {
             throw new LedgerRuleException("too_few_lines", "An entry needs at least two lines");
         }
-
-        long debits = 0;
-        long credits = 0;
-        try {
-            for (Line line : lines) {
-                if (line.direction() == null) {
-                    throw new LedgerRuleException("missing_direction", "Every line needs a direction");
-                }
-                if (line.amountMinor() <= 0) {
-                    throw new LedgerRuleException("non_positive_amount", "Line amounts must be greater than zero");
-                }
-                if (line.direction() == Direction.DEBIT) {
-                    debits = Math.addExact(debits, line.amountMinor());
-                } else {
-                    credits = Math.addExact(credits, line.amountMinor());
-                }
+        for (Line line : lines) {
+            if (line.direction() == null) {
+                throw new LedgerRuleException("missing_direction", "Every line needs a direction");
             }
-        } catch (ArithmeticException e) {
-            throw new LedgerRuleException("amount_overflow", "Entry total is too large");
-        }
-        if (debits != credits) {
-            throw new LedgerRuleException("unbalanced",
-                    "Debits (" + debits + ") and credits (" + credits + ") must be equal");
+            if (line.amountMinor() <= 0) {
+                throw new LedgerRuleException("non_positive_amount", "Line amounts must be greater than zero");
+            }
         }
 
         Set<UUID> accountIds = new HashSet<>();
@@ -129,23 +120,46 @@ public class PostingService {
             if (!account.isOpen()) {
                 throw new LedgerRuleException("account_closed", "Account " + account.getCode() + " is closed");
             }
-            if (!account.getCurrency().equals(currency)) {
+            if (entryCurrency != null && !account.getCurrency().equals(entryCurrency)) {
                 throw new LedgerRuleException("currency_mismatch", "Account " + account.getCode() + " is in "
-                        + account.getCurrency() + ", entry is in " + currency);
+                        + account.getCurrency() + ", entry is in " + entryCurrency);
             }
         }
+
+        // a line is in its account's currency; each currency must balance on its own
+        Map<String, long[]> totals = new TreeMap<>();
+        try {
+            for (Line line : lines) {
+                long[] t = totals.computeIfAbsent(found.get(line.accountId()).getCurrency(), c -> new long[2]);
+                int side = line.direction() == Direction.DEBIT ? 0 : 1;
+                t[side] = Math.addExact(t[side], line.amountMinor());
+            }
+        } catch (ArithmeticException e) {
+            throw new LedgerRuleException("amount_overflow", "Entry total is too large");
+        }
+        totals.forEach((currency, t) -> {
+            if (t[0] != t[1]) {
+                throw new LedgerRuleException("unbalanced", "In " + currency + ", debits (" + t[0]
+                        + ") and credits (" + t[1] + ") must be equal");
+            }
+        });
+        String storedCurrency = entryCurrency != null
+                ? entryCurrency
+                : totals.size() == 1 ? totals.keySet().iterator().next() : null;
 
         LocalDate effectiveDate = command.effectiveDate() != null
                 ? command.effectiveDate()
                 : LocalDate.now(clock.withZone(ZoneOffset.UTC));
         JournalEntry entry = new JournalEntry(UUID.randomUUID(), tenantId, command.reference(),
-                command.description(), effectiveDate, currency, reversalOf, clock.instant());
-        lines.forEach(l -> entry.addLine(l.accountId(), l.direction(), l.amountMinor(), l.memo()));
+                command.description(), effectiveDate, storedCurrency, reversalOf, clock.instant());
+        lines.forEach(l -> entry.addLine(l.accountId(), found.get(l.accountId()).getCurrency(), l.direction(),
+                l.amountMinor(), l.memo()));
         JournalEntry saved = entries.save(entry);
 
         eventStore.append(tenantId, LedgerEventType.ENTRY_POSTED, new Payloads.EntryPosted(saved.getId(),
-                reversalOf, currency, effectiveDate, saved.getLines().stream()
-                        .map(l -> new Payloads.PostedLine(l.getAccountId(), l.getDirection(), l.getAmountMinor()))
+                reversalOf, storedCurrency, effectiveDate, saved.getLines().stream()
+                        .map(l -> new Payloads.PostedLine(l.getAccountId(), l.getCurrency(), l.getDirection(),
+                                l.getAmountMinor()))
                         .toList()));
         return saved;
     }

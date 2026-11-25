@@ -18,11 +18,17 @@ public final class Payloads {
     public record AccountClosed(UUID accountId) {
     }
 
+    /** currency is null for an entry in several currencies. */
     public record EntryPosted(UUID entryId, UUID reversalOf, String currency, LocalDate effectiveDate,
             List<PostedLine> lines) {
     }
 
-    public record PostedLine(UUID accountId, Direction direction, long amountMinor) {
+    /** currency is missing from events written before lines had their own currency. */
+    public record PostedLine(UUID accountId, String currency, Direction direction, long amountMinor) {
+
+        public String currencyOr(String entryCurrency) {
+            return currency != null ? currency : entryCurrency;
+        }
     }
 
     public record EntryReversed(UUID entryId, UUID reversalEntryId, String reason) {
