@@ -6,18 +6,20 @@ import java.util.UUID;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.ledgerline.common.Direction;
+import io.ledgerline.idempotency.IdempotencyService;
 import io.ledgerline.journal.JournalQueryService.EntryView;
 import io.ledgerline.web.TenantId;
 import jakarta.validation.Valid;
@@ -35,10 +37,13 @@ public class JournalController {
 
     private final PostingService postingService;
     private final JournalQueryService queryService;
+    private final IdempotencyService idempotency;
 
-    public JournalController(PostingService postingService, JournalQueryService queryService) {
+    public JournalController(PostingService postingService, JournalQueryService queryService,
+            IdempotencyService idempotency) {
         this.postingService = postingService;
         this.queryService = queryService;
+        this.idempotency = idempotency;
     }
 
     public record PostEntryRequest(
@@ -60,14 +65,16 @@ public class JournalController {
     }
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
     @Transactional
-    public EntryView post(TenantId tenant, @Valid @RequestBody PostEntryRequest request) {
+    public ResponseEntity<Object> post(TenantId tenant, @Valid @RequestBody PostEntryRequest request,
+            @RequestHeader(name = IdempotencyService.HEADER, required = false) String idempotencyKey) {
         List<PostingService.Line> lines = request.lines().stream()
                 .map(l -> new PostingService.Line(l.accountId(), l.direction(), l.amountMinor(), l.memo()))
                 .toList();
-        return JournalQueryService.view(postingService.post(tenant.value(), new PostingService.PostEntryCommand(
-                request.reference(), request.description(), request.effectiveDate(), request.currency(), lines)));
+        return idempotency.execute(tenant.value(), idempotencyKey, "POST /api/entries", request, HttpStatus.CREATED,
+                () -> JournalQueryService.view(postingService.post(tenant.value(),
+                        new PostingService.PostEntryCommand(request.reference(), request.description(),
+                                request.effectiveDate(), request.currency(), lines))));
     }
 
     @GetMapping("/{id}")
@@ -85,9 +92,12 @@ public class JournalController {
     }
 
     @PostMapping("/{id}/reversal")
-    @ResponseStatus(HttpStatus.CREATED)
     @Transactional
-    public EntryView reverse(TenantId tenant, @PathVariable UUID id, @Valid @RequestBody ReverseRequest request) {
-        return JournalQueryService.view(postingService.reverse(tenant.value(), id, request.reason()));
+    public ResponseEntity<Object> reverse(TenantId tenant, @PathVariable UUID id,
+            @Valid @RequestBody ReverseRequest request,
+            @RequestHeader(name = IdempotencyService.HEADER, required = false) String idempotencyKey) {
+        return idempotency.execute(tenant.value(), idempotencyKey, "POST /api/entries/" + id + "/reversal", request,
+                HttpStatus.CREATED,
+                () -> JournalQueryService.view(postingService.reverse(tenant.value(), id, request.reason())));
     }
 }
