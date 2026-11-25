@@ -45,6 +45,9 @@ public class Account extends AssignedIdEntity {
     @Column(name = "closed_at")
     private Instant closedAt;
 
+    @Column(name = "overdraft_limit_minor")
+    private Long overdraftLimitMinor;
+
     @Version
     private long version;
 
@@ -98,6 +101,15 @@ public class Account extends AssignedIdEntity {
 
     public Instant getClosedAt() {
         return closedAt;
+    }
+
+    /** How far below zero the available balance may go; null for no limit. */
+    public Long getOverdraftLimitMinor() {
+        return overdraftLimitMinor;
+    }
+
+    void setOverdraftLimitMinor(Long limit) {
+        this.overdraftLimitMinor = limit;
     }
 
     public boolean isOpen() {

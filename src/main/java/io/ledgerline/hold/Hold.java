@@ -72,11 +72,14 @@ public class Hold extends AssignedIdEntity {
         return status == HoldStatus.ACTIVE && expiresAt.isAfter(now);
     }
 
-    void capture(UUID entryId, long amount, Instant at) {
+    void capture(long amount, Instant at) {
         status = HoldStatus.CAPTURED;
-        capturedEntryId = entryId;
         capturedAmountMinor = amount;
         resolvedAt = at;
+    }
+
+    void linkCapturedEntry(UUID entryId) {
+        capturedEntryId = entryId;
     }
 
     void release(Instant at) {

@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -11,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import io.ledgerline.account.Account;
 import io.ledgerline.account.AccountRepository;
+import io.ledgerline.account.OverdraftGuard;
 import io.ledgerline.common.Direction;
 import io.ledgerline.common.LedgerRuleException;
 import io.ledgerline.common.NotFoundException;
@@ -34,14 +36,16 @@ public class HoldService {
     private final AccountRepository accounts;
     private final PostingService postingService;
     private final EventStore eventStore;
+    private final OverdraftGuard overdraftGuard;
     private final Clock clock;
 
     public HoldService(HoldRepository holds, AccountRepository accounts, PostingService postingService,
-            EventStore eventStore, Clock clock) {
+            EventStore eventStore, OverdraftGuard overdraftGuard, Clock clock) {
         this.holds = holds;
         this.accounts = accounts;
         this.postingService = postingService;
         this.eventStore = eventStore;
+        this.overdraftGuard = overdraftGuard;
         this.clock = clock;
     }
 
@@ -71,6 +75,8 @@ public class HoldService {
             throw new LedgerRuleException("invalid_expiry", "A hold must expire within " + MAX_HOLD.toDays() + " days");
         }
 
+        overdraftGuard.check(Map.of(account, -command.amountMinor()));
+
         Instant now = clock.instant();
         Hold hold = holds.save(new Hold(UUID.randomUUID(), tenantId, account.getId(), command.amountMinor(),
                 account.getCurrency(), command.reference(), now.plus(expiresIn), now));
@@ -99,12 +105,15 @@ public class HoldService {
         Direction out = held.getType().normalSide().opposite();
         String description = command.description() != null ? command.description() : "Capture of hold " + holdId;
 
+        // captured before posting, so the overdraft check doesn't count this hold as well as the capture
+        hold.capture(amount, clock.instant());
+
         JournalEntry entry = postingService.post(tenantId, new PostingService.PostEntryCommand(null, description,
                 null, hold.getCurrency(), List.of(
                         new PostingService.Line(held.getId(), out, amount, "hold " + holdId),
                         new PostingService.Line(command.counterAccountId(), out.opposite(), amount,
                                 "hold " + holdId))));
-        hold.capture(entry.getId(), amount, clock.instant());
+        hold.linkCapturedEntry(entry.getId());
         eventStore.append(tenantId, LedgerEventType.HOLD_CAPTURED,
                 new Payloads.HoldCaptured(holdId, entry.getId(), amount));
         return new Capture(hold, entry);

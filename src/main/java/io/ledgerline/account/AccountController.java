@@ -13,6 +13,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,6 +32,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 @RestController
@@ -55,14 +57,18 @@ public class AccountController {
             @NotBlank @Pattern(regexp = "[A-Za-z0-9][A-Za-z0-9._-]{0,31}") String code,
             @NotBlank @Size(max = 200) String name,
             @NotNull AccountType type,
-            @NotBlank @Size(min = 3, max = 3) String currency) {
+            @NotBlank @Size(min = 3, max = 3) String currency,
+            @PositiveOrZero Long overdraftLimitMinor) {
+    }
+
+    public record OverdraftLimitRequest(@PositiveOrZero Long limitMinor) {
     }
 
     public record AccountView(UUID id, String code, String name, AccountType type, String currency,
-            AccountStatus status, Instant createdAt, Instant closedAt) {
+            AccountStatus status, Long overdraftLimitMinor, Instant createdAt, Instant closedAt) {
         static AccountView from(Account a) {
             return new AccountView(a.getId(), a.getCode(), a.getName(), a.getType(), a.getCurrency(), a.getStatus(),
-                    a.getCreatedAt(), a.getClosedAt());
+                    a.getOverdraftLimitMinor(), a.getCreatedAt(), a.getClosedAt());
         }
     }
 
@@ -73,7 +79,7 @@ public class AccountController {
         return idempotency.execute(tenant.value(), idempotencyKey, "POST /api/accounts", request, HttpStatus.CREATED,
                 () -> AccountView.from(accountService.open(tenant.value(),
                         new AccountService.OpenAccountCommand(request.code(), request.name(), request.type(),
-                                request.currency()))));
+                                request.currency(), request.overdraftLimitMinor()))));
     }
 
     @GetMapping
@@ -84,6 +90,12 @@ public class AccountController {
     @GetMapping("/{id}")
     public AccountView get(TenantId tenant, @PathVariable UUID id) {
         return AccountView.from(accountService.get(tenant.value(), id));
+    }
+
+    @PutMapping("/{id}/overdraft-limit")
+    public AccountView setOverdraftLimit(TenantId tenant, @PathVariable UUID id,
+            @Valid @RequestBody OverdraftLimitRequest request) {
+        return AccountView.from(accountService.setOverdraftLimit(tenant.value(), id, request.limitMinor()));
     }
 
     @PostMapping("/{id}/close")

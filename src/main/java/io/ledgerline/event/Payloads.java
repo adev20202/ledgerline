@@ -19,6 +19,10 @@ public final class Payloads {
     public record AccountClosed(UUID accountId) {
     }
 
+    /** limitMinor null removes the limit. */
+    public record OverdraftLimitSet(UUID accountId, Long limitMinor) {
+    }
+
     /** currency is null for an entry in several currencies. */
     public record EntryPosted(UUID entryId, UUID reversalOf, String currency, LocalDate effectiveDate,
             List<PostedLine> lines) {

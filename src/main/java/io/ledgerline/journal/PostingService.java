@@ -3,6 +3,7 @@ package io.ledgerline.journal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import io.ledgerline.account.Account;
 import io.ledgerline.account.AccountRepository;
+import io.ledgerline.account.OverdraftGuard;
 import io.ledgerline.common.ConflictException;
 import io.ledgerline.common.Currencies;
 import io.ledgerline.common.Direction;
@@ -36,13 +38,15 @@ public class PostingService {
     private final JournalEntryRepository entries;
     private final AccountRepository accounts;
     private final EventStore eventStore;
+    private final OverdraftGuard overdraftGuard;
     private final Clock clock;
 
     public PostingService(JournalEntryRepository entries, AccountRepository accounts, EventStore eventStore,
-            Clock clock) {
+            OverdraftGuard overdraftGuard, Clock clock) {
         this.entries = entries;
         this.accounts = accounts;
         this.eventStore = eventStore;
+        this.overdraftGuard = overdraftGuard;
         this.clock = clock;
     }
 
@@ -143,6 +147,14 @@ public class PostingService {
                         + ") and credits (" + t[1] + ") must be equal");
             }
         });
+        Map<Account, Long> changes = new HashMap<>();
+        for (Line line : lines) {
+            Account account = found.get(line.accountId());
+            long signed = line.direction() == account.getType().normalSide() ? line.amountMinor() : -line.amountMinor();
+            changes.merge(account, signed, Math::addExact);
+        }
+        overdraftGuard.check(changes);
+
         String storedCurrency = entryCurrency != null
                 ? entryCurrency
                 : totals.size() == 1 ? totals.keySet().iterator().next() : null;

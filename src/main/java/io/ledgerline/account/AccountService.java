@@ -32,7 +32,13 @@ public class AccountService {
         this.clock = clock;
     }
 
-    public record OpenAccountCommand(String code, String name, AccountType type, String currency) {
+    /** overdraftLimitMinor null means no limit. */
+    public record OpenAccountCommand(String code, String name, AccountType type, String currency,
+            Long overdraftLimitMinor) {
+
+        public OpenAccountCommand(String code, String name, AccountType type, String currency) {
+            this(code, name, type, currency, null);
+        }
     }
 
     @Transactional
@@ -41,11 +47,37 @@ public class AccountService {
         if (accounts.existsByTenantIdAndCode(tenantId, command.code())) {
             throw new ConflictException("account_code_taken", "Account code " + command.code() + " is already in use");
         }
-        Account account = accounts.save(new Account(UUID.randomUUID(), tenantId, command.code(), command.name(),
-                command.type(), currency, clock.instant()));
+        Account account = new Account(UUID.randomUUID(), tenantId, command.code(), command.name(), command.type(),
+                currency, clock.instant());
+        account.setOverdraftLimitMinor(validLimit(command.overdraftLimitMinor()));
+        account = accounts.save(account);
         eventStore.append(tenantId, LedgerEventType.ACCOUNT_OPENED, new Payloads.AccountOpened(account.getId(),
                 account.getCode(), account.getType().name(), account.getCurrency()));
+        if (account.getOverdraftLimitMinor() != null) {
+            eventStore.append(tenantId, LedgerEventType.OVERDRAFT_LIMIT_SET,
+                    new Payloads.OverdraftLimitSet(account.getId(), account.getOverdraftLimitMinor()));
+        }
         return account;
+    }
+
+    /**
+     * Sets or removes (null) the overdraft limit. A limit below the current
+     * available balance is allowed; it only blocks further decreases.
+     */
+    @Transactional
+    public Account setOverdraftLimit(UUID tenantId, UUID accountId, Long limitMinor) {
+        Account account = get(tenantId, accountId);
+        account.setOverdraftLimitMinor(validLimit(limitMinor));
+        eventStore.append(tenantId, LedgerEventType.OVERDRAFT_LIMIT_SET,
+                new Payloads.OverdraftLimitSet(account.getId(), account.getOverdraftLimitMinor()));
+        return account;
+    }
+
+    private static Long validLimit(Long limitMinor) {
+        if (limitMinor != null && limitMinor < 0) {
+            throw new LedgerRuleException("invalid_limit", "Overdraft limit can't be negative");
+        }
+        return limitMinor;
     }
 
     @Transactional(readOnly = true)
