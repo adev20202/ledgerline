@@ -21,9 +21,10 @@ Built with Java 21, Spring Boot 3.4, Spring Data JPA, Flyway and PostgreSQL.
   numbered 1, 2, 3, ... (`tenant_sequence`), and `GET /api/events` lets an
   integration follow them.
 - **Balances** (`account_balances`) are filled in by `BalanceProjector`, which
-  polls the event log every `ledger.projection.poll-interval-ms` and keeps
-  its position in `projection_checkpoints`. Balances and the trial balance can
-  trail the journal by one poll.
+  polls the event log every `ledger.projection.poll-interval-ms`. It keeps one
+  checkpoint per tenant (`projection_tenant_checkpoints`, a tenant sequence)
+  and locks it while applying a batch, so more than one instance can run it.
+  Balances and the trial balance can trail the journal by one poll.
 
 ```
 src/main/java/io/ledgerline

@@ -30,8 +30,8 @@ public class AccountBalance extends AssignedIdEntity {
     @Column(name = "credit_total_minor", nullable = false)
     private long creditTotalMinor;
 
-    @Column(name = "last_event_id", nullable = false)
-    private long lastEventId;
+    @Column(name = "last_sequence", nullable = false)
+    private long lastSequence;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
@@ -39,21 +39,21 @@ public class AccountBalance extends AssignedIdEntity {
     protected AccountBalance() {
     }
 
-    AccountBalance(UUID accountId, UUID tenantId, String currency, long eventId, Instant at) {
+    AccountBalance(UUID accountId, UUID tenantId, String currency, long sequence, Instant at) {
         this.accountId = accountId;
         this.tenantId = tenantId;
         this.currency = currency;
-        this.lastEventId = eventId;
+        this.lastSequence = sequence;
         this.updatedAt = at;
     }
 
-    void apply(Direction direction, long amountMinor, long eventId, Instant at) {
+    void apply(Direction direction, long amountMinor, long sequence, Instant at) {
         if (direction == Direction.DEBIT) {
             debitTotalMinor = Math.addExact(debitTotalMinor, amountMinor);
         } else {
             creditTotalMinor = Math.addExact(creditTotalMinor, amountMinor);
         }
-        lastEventId = eventId;
+        lastSequence = sequence;
         updatedAt = at;
     }
 
@@ -78,8 +78,9 @@ public class AccountBalance extends AssignedIdEntity {
         return creditTotalMinor;
     }
 
-    public long getLastEventId() {
-        return lastEventId;
+    /** Tenant sequence of the last event applied to this balance. */
+    public long getLastSequence() {
+        return lastSequence;
     }
 
     public Instant getUpdatedAt() {

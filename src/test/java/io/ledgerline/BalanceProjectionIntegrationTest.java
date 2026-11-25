@@ -61,10 +61,10 @@ class BalanceProjectionIntegrationTest extends IntegrationTestBase {
     void rerunAfterCatchingUpChangesNothing() {
         transfer(tenant, cash, revenue, 10_000);
         projectAll();
-        long checkpoint = projector.checkpoint();
+        long checkpoint = projector.checkpoint(tenant);
 
         assertThat(projector.runOnce()).isZero();
-        assertThat(projector.checkpoint()).isEqualTo(checkpoint);
+        assertThat(projector.checkpoint(tenant)).isEqualTo(checkpoint);
         assertThat(balances.balanceOf(tenant, cash.getId()).balanceMinor()).isEqualTo(10_000);
     }
 
