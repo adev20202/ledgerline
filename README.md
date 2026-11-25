@@ -11,7 +11,12 @@ Built with Java 21, Spring Boot 3.4, Spring Data JPA, Flyway and PostgreSQL.
 
 - **Accounts** have a type (asset, liability, equity, income, expense), a
   currency and a code that is unique per tenant. Only accounts with a zero
-  balance can be closed.
+  balance and no live holds can be closed.
+- **Overdraft limits.** An account can have a limit: how far below zero its
+  available balance (balance less live holds) may go. No limit means no
+  check. When an entry or hold would lower a limited account, its row is
+  locked and the balance is read from the journal, not the projection, so
+  parallel payments can't overdraw it. Over the limit is `insufficient_funds`.
 - **Journal entries** must balance in every currency they touch: per
   currency, total debits equal total credits, with at least two lines in all.
   Each line is in its account's currency. An entry sent with a `currency`
@@ -99,7 +104,7 @@ key in `X-Api-Key`. Errors are RFC 9457 problem details; ledger rule
 violations are `422` with a `code` field such as `unbalanced` or
 `currency_mismatch`.
 
-`POST /api/accounts`, `POST /api/entries`, `POST /api/entries/{id}/reversal`
+`POST /api/accounts`, `POST /api/entries`, `POST /api/entries/{id}/reversal`,
 `POST /api/fx/conversions`, `POST /api/holds` and `POST /api/holds/{id}/capture`
 accept an optional `Idempotency-Key` header. A retry with the same key and body
 gets the first response back, marked `Idempotent-Replayed: true`, and nothing
@@ -116,6 +121,7 @@ can be retried with the same key. Keys are kept for `ledger.idempotency.ttl`
 | POST | `/api/accounts` | open an account |
 | GET | `/api/accounts?type=` | list accounts |
 | GET | `/api/accounts/{id}` | get an account |
+| PUT | `/api/accounts/{id}/overdraft-limit` | set or remove (`null`) the overdraft limit |
 | POST | `/api/accounts/{id}/close` | close a zero-balance account |
 | GET | `/api/accounts/{id}/balance` | projected balance |
 | GET | `/api/accounts/{id}/statement?from=&to=` | lines posted to the account |
