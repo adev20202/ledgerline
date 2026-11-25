@@ -83,6 +83,14 @@ key in `X-Api-Key`. Errors are RFC 9457 problem details; ledger rule
 violations are `422` with a `code` field such as `unbalanced` or
 `currency_mismatch`.
 
+`POST /api/accounts`, `POST /api/entries` and `POST /api/entries/{id}/reversal`
+accept an optional `Idempotency-Key` header. A retry with the same key and body
+gets the first response back, marked `Idempotent-Replayed: true`, and nothing
+is written twice, even when the two requests arrive at the same time. The same
+key with a different body is a `409`. Failed requests are not stored, so they
+can be retried with the same key. Keys are kept for `ledger.idempotency.ttl`
+(default 24 hours).
+
 | Method | Path | |
 | --- | --- | --- |
 | POST | `/admin/tenants` | create a tenant, returns its API key once |
